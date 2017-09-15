@@ -2,6 +2,9 @@ var crypto = require('crypto');
 var uuid = require('uuid');
 var request = require('request');
 
+// 需要用到的工具类
+var utils = require('../lib/utils');
+
 const APPID = '';                   // 商户AAPID
 const MCH_ID = '';                  // 商户设备ID
 const DEVICE_INFO = 'WEB';          // 微信公众号支付填WEB
@@ -31,105 +34,6 @@ var JSAPI_TICKET_OBJ = {
   expire_time: 0
 };
 
-/* 数组对象根据ASCII码排序 */
-var ASCIIDesc = function (obj) {
-  var newObj = {};
-  var newArr = [];
-  /* 对象key存入数组 */
-  for(var i in obj) {
-    newArr.push(i);
-  }
-  /* 冒泡排序，得到排序后的数组 */
-  for(var i=0; i<newArr.length; i++) {
-    var temp = newArr[0];
-    var len = newArr.length - i;
-    for(var j=1; j<len; j++) {
-      if (newArr[j] < temp) {
-        temp = newArr[j - 1];
-        newArr[j - 1] = newArr[j];
-        newArr[j] = temp;
-      } else {
-        temp = newArr[j];
-      }
-    }
-  }
-  /* 将排序好的数组插入新对象 */
-  newArr.forEach(function (item) {
-    newObj[item] = obj[item];
-  });
-  return newObj;
-}
-
-/* 封装签名函数 */
-/* signObj 需要签名的对象 */
-/* signType签名算法，默认md5 */
-/* needAPISecret是否需要添加API密钥，默认需要 */
-var signFuntion = function (signObj, signType, needAPISecret) {
-  if (!signObj) {
-    return 'error sign';
-  }
-  var signType = signType || 'md5';
-  signType = signType.toLocaleLowerCase();
-  if (signType !== 'md5' && signType !== 'sha1' && signType !== 'sha256') {
-    signType = 'md5';
-  }
-  var needAPISecret = needAPISecret || true;
-  /* ASCII码排序签名对象 */
-  signObj = ASCIIDesc(signObj);
-
-  /* 定义待加密字符串str */
-  var signStr = '';
-  for(var i in signObj) {
-    signStr += i + '=' + signObj[i] + '&';
-  }
-
-  if (needAPISecret) {
-    /* 拼接API密钥 */
-    signStr += 'key=' + APISecret;
-  }
-  
-  /* 签名 */
-  return crypto.createHash(signType).update(signStr).digest('hex').toLocaleUpperCase();
-};
-
-/* 手动拼接发请求需要的xml文档 */
-/* 参数 */
-/* obj: 需要拼接的对象 */
-/* addCDATA: 是否将参数加上CDATA(默认不需要) */
-var getUnifiedXmlParams = function (obj, addCDATA){
-  var addCDATA = addCDATA || false;
-  var body = '<xml>';
-  for (var param in obj) {
-    if (addCDATA === true) {
-      body += '<' + param + '><![CDATA[' + obj[param] + ']]></' + param + '>';
-    } else {
-      body += '<' + param + '>' + obj[param] + '</' + param + '>';
-    }
-  }
-  body += '</xml>';
-  return body;
-}
-
-/* 取得微信端返回来的xml标签里的value */
-/* 参数： */
-/* node_name: 需要取值的参数名 */
-/* xml：需要取值的xml文档 */
-/* flag: xml文档返回值中是否有中括号(默认没有) */
-var getXMLNodeValue = function (node_name, xml, flag){
-  flag = flag || false;
-  var _reNodeValue = '';
-  var tmp = xml.split('<' + node_name + '>');
-  if (tmp) {
-    var _tmp = tmp[1].split('</' + node_name + '>')[0];
-    if (!flag) {
-      var _tmp1 = _tmp.split('[');
-      _reNodeValue = _tmp1[2].split(']')[0];
-    } else {
-      _reNodeValue = _tmp;
-    }    
-  }
-  return _reNodeValue;
-};
 
 /* 获取网页授权AccessToken */
 /* 文档地址：https://mp.weixin.qq.com/wiki?t=resource/res_main&id=mp1421140842 */
@@ -195,13 +99,13 @@ var createWechatOrderAPI = function (data, cb) {
   };
 
   /* 调用签名函数 */
-  var sign = signFuntion(payObj);
+  var sign = utils.signFunc(payObj, APISecret);
 
   /* 下单参数对象添加签名字段 */
   payObj.sign = sign;
 
   /* 下单参数对象转xml文档 */
-  var xml = getUnifiedXmlParams(payObj);
+  var xml = utils.getUnifiedXmlParams(payObj);
 
   console.log(xml)
 
@@ -230,12 +134,12 @@ var createWechatOrderAPI = function (data, cb) {
       // console.log('return xml data ==', _reBodyXml);
 
       // 取得return_code进行成功与否判断
-      var _reCode = getXMLNodeValue('return_code', _reBodyXml, false);
+      var _reCode = utils.getXMLNodeValue('return_code', _reBodyXml, false);
       
       // 返回的状态如果为FAIL，说明与微信服务器通信失败
       if (_reCode === 'FAIL') {
         console.log('通信失败');
-        var _reMsg = getXMLNodeValue('return_msg', _reBodyXml, false);
+        var _reMsg = utils.getXMLNodeValue('return_msg', _reBodyXml, false);
         cb(null, {code: 500, msg: _reMsg});
         return;
       }
@@ -255,13 +159,13 @@ var createWechatOrderAPI = function (data, cb) {
       if (_reCode === 'SUCCESS') {
         console.log('通信成功')
 
-        var _resultCode = getXMLNodeValue('result_code', _reBodyXml, false);
+        var _resultCode = utils.getXMLNodeValue('result_code', _reBodyXml, false);
         /* 判断订单是否提交成功（业务标识） */
 
         // 返回的resultCode如果为FAIL，说明业务失败，订单未成功
         if (_resultCode === 'FAIL') {
           console.log('订单未成功');
-          var _errCodeDes = getXMLNodeValue('err_code_des', _reBodyXml, false);
+          var _errCodeDes = utils.getXMLNodeValue('err_code_des', _reBodyXml, false);
           cb(null, {code: 500, msg: _errCodeDes});
           return;
         }
@@ -270,7 +174,7 @@ var createWechatOrderAPI = function (data, cb) {
           console.log('提交成功');
 
           /* 成功时返回prepay_id */
-          var _prepayId = getXMLNodeValue('prepay_id', _reBodyXml, false);
+          var _prepayId = utils.getXMLNodeValue('prepay_id', _reBodyXml, false);
 
           /* 赋值参数package */
           rePrepayParams.package = 'prepay_id=' + _prepayId;
@@ -280,7 +184,7 @@ var createWechatOrderAPI = function (data, cb) {
           if(payObj.trade_type == 'JSAPI') {
 
             /* 调用签名函数 */
-            var _signPara = signFuntion(rePrepayParams);
+            var _signPara = utils.signFunc(rePrepayParams, APISecret);
 
             /* 前端需要支付下单的请求参数对象添加签名字段 */
             rePrepayParams.paySign = _signPara;
@@ -438,30 +342,9 @@ module.exports = {
       return next();
     });
   },
-  wechatPay: function (req, res, next) {
-    var query = req.query;
-    console.log(query);
-    /* 支付有一些参数是根据前端来传送的，根据自己的业务需求来指定需要传递哪些参数 */
-    if (!query.hasOwnProperty('attach') || !query.hasOwnProperty('openid') || !query.hasOwnProperty('totalFee') || !query.hasOwnProperty('outTradeNo')) {
-      return res.json({code: 500, msg: '参数错误！'});
-      return next();
-    }
-    /* 调用统一下单API */
-    createWechatOrderAPI({
-      attach: query.attach,
-      openid: query.openid, 
-      totalFee: query.totalFee,
-      outTradeNo: query.outTradeNo,
-      /* express 框架提供可以拿到目标ip,正则表达式去掉冒号和f */
-      spbillIP: req.connection.remoteAddress.replace(/:|f/g, '')
-    }, function (err, orderData) {
-      if(err) {
-        return next(new Error(err));
-      }
-      return res.json(orderData);
-      return next();
-    });
-  },
+  // 微信JSSDK验证所需的配置参数
+  // 参数返回后，需要在前端配置
+  // 配置好后，就可以在微信内置浏览器中使用JSSDK提供的原生接口
   wechatConfig: function (req, res, next) {
     /* 首先获取access_token */
     getBaseAccessTokenAPI(null, function (err, data) {
@@ -499,7 +382,7 @@ module.exports = {
         }
 
         /* 使用sha1加密算法签名 */
-        var sign = signFuntion(_signObj, 'sha1', false);
+        var sign = utils.signFunc(_signObj, null, 'sha1', false);
 
         /* 签名加入config对象 */
         _signObj.signature = sign;
@@ -509,6 +392,31 @@ module.exports = {
       });
     });
   },
+  wechatPay: function (req, res, next) {
+    var query = req.query;
+    console.log(query);
+    /* 支付有一些参数是根据前端来传送的，根据自己的业务需求来指定需要传递哪些参数 */
+    if (!query.hasOwnProperty('attach') || !query.hasOwnProperty('openid') || !query.hasOwnProperty('totalFee') || !query.hasOwnProperty('outTradeNo')) {
+      return res.json({code: 500, msg: '参数错误！'});
+      return next();
+    }
+    /* 调用统一下单API */
+    createWechatOrderAPI({
+      attach: query.attach,
+      openid: query.openid, 
+      totalFee: query.totalFee,
+      outTradeNo: query.outTradeNo,
+      /* express 框架提供可以拿到目标ip,正则表达式去掉冒号和f */
+      spbillIP: req.connection.remoteAddress.replace(/:|f/g, '')
+    }, function (err, orderData) {
+      if(err) {
+        return next(new Error(err));
+      }
+      return res.json(orderData);
+      return next();
+    });
+  },
+  
   /* 微信支付成功后要调用的接口 */
   /* 该接口一定要能够正确地把接受到消息的返回给微信主动发起的请求 */
   /* 否则微信会来个“八连杀”，只有在接收到正确的回复后不再发送 */
@@ -527,7 +435,7 @@ module.exports = {
         return_code: 'FAIL',
         return_msg: '数据格式不是xml文档'
       }
-      _rePayResultXml = getUnifiedXmlParams(_rePayResult, true);
+      _rePayResultXml = utils.getUnifiedXmlParams(_rePayResult, true);
       return res.send(_rePayResultXml);
       return next();
     }
@@ -545,7 +453,7 @@ module.exports = {
           return_code: 'SUCCESS',
           return_msg: 'OK'
         }
-        _rePayResultXml = getUnifiedXmlParams(_rePayResult, true);
+        _rePayResultXml = utils.getUnifiedXmlParams(_rePayResult, true);
         return res.send(_rePayResultXml);
         return next();
       }
@@ -558,14 +466,14 @@ module.exports = {
         }
       }
       /* 本地计算得到签名sign */
-      var sign = signFuntion(_rePayContent);
+      var sign = utils.signFunc(_rePayContent, APISecret);
       /* 如果签名匹配不上，说明请求参数被篡改，返回签名无效 */
       if (sign !== xmlBody.xml.sign[0]) {
         _rePayResult = {
           return_code: 'FAIL',
           return_msg: '签名无效'
         }
-        _rePayResultXml = getUnifiedXmlParams(_rePayResult, true);
+        _rePayResultXml = utils.getUnifiedXmlParams(_rePayResult, true);
         return res.send(_rePayResultXml);
         return next();
       }
@@ -577,7 +485,7 @@ module.exports = {
           return_code: 'SUCCESS',
           return_msg: 'OK'
         }
-        _rePayResultXml = getUnifiedXmlParams(_rePayResult, true);
+        _rePayResultXml = utils.getUnifiedXmlParams(_rePayResult, true);
 
         /* 此处写上自己的业务逻辑，把需要存储的订单信息发送给业务后台 */
         /* _rePayContent: 需要存到数据后台的支付结果对象 */
