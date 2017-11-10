@@ -1,6 +1,5 @@
 var crypto = require('crypto');
-var uuid = require('uuid');
-var request = require('request');
+var http = require('request');
 
 // 需要用到的工具类
 var utils = require('../lib/utils');
@@ -10,14 +9,13 @@ const MCH_ID = '';                  // 商户设备ID
 const DEVICE_INFO = 'WEB';          // 微信公众号支付填WEB
 const DD_BODY = '';                 // 购买信息
 // 微信支付回调接口地址（其中的域名为该node服务器配置的域名）
-const NOTIFY_URL = 'https://xxx.xxx.com/api/payResult';
+const NOTIFY_URL = 'https://xxx.xxx.com/pay/wxapi/payResult';
 const TRADE_TYPE = 'JSAPI';
 
 const AppSecret = '';               // 商户AppSecret
 const APISecret = '';               // 签名密钥
 /* 微信JSSDK配置目录（前端页面的指定路由下面的JSSDK授权目录） */
 const wxConfigSignUrl = 'https://xxx.xxx.com';
-const wechatPayOrderList = [];
 
 /* 基本AccessToken对象 */
 /* 这个对象直接存储在内存中，通过接口得到的token会存储于这个对象 */
@@ -38,7 +36,7 @@ var JSAPI_TICKET_OBJ = {
 /* 获取网页授权AccessToken */
 /* 文档地址：https://mp.weixin.qq.com/wiki?t=resource/res_main&id=mp1421140842 */
 var getOAuthAccessTokenAPI = function (query, cb) {
-  request({
+  http({
     url: 'https://api.weixin.qq.com/sns/oauth2/access_token?appid=' + APPID + '&secret=' + AppSecret + '&code=' + query.code + '&grant_type=authorization_code',
     method: 'GET'
   }, function (err, response, body) {
@@ -58,7 +56,7 @@ var getOAuthAccessTokenAPI = function (query, cb) {
 /* 刷新网页授权AccessToken */
 /* 文档地址：https://mp.weixin.qq.com/wiki?t=resource/res_main&id=mp1421140842 */
 var refreshOAuthAccessTokenAPI = function (query, cb) {
-  request({
+  http({
     url: 'https://api.weixin.qq.com/sns/oauth2/refresh_token?appid=' + APPID + '&grant_type=refresh_token&refresh_token=' + query.refresh_token,
     method: 'GET'
   }, function (err, response, body) {
@@ -89,7 +87,6 @@ var createWechatOrderAPI = function (data, cb) {
     body: DD_BODY,                             // 商品描述，会写在用户支付界面，作为标题
     attach: data.attach,                       // 附加数据，在查询API和支付通知中原样返回，可作为自定义参数使用。
     /* 微信要求商户订单号不超过32位，正则表达式去掉所有-号 */
-    // out_trade_no: uuid.v1().replace(/-/g, ''), // 商户订单号
     out_trade_no: data.outTradeNo,             // 商户订单号
     total_fee: data.totalFee,                  // 支付金额（单位为分）
     spbill_create_ip: data.spbillIP,           // 发起支付的用户IP
@@ -110,7 +107,7 @@ var createWechatOrderAPI = function (data, cb) {
   console.log(xml)
 
   /* 发送下单请求 */
-  request({
+  http({
     url: 'https://api.mch.weixin.qq.com/pay/unifiedorder',
     method: 'POST',
     body: xml
@@ -221,7 +218,7 @@ var getBaseAccessTokenAPI = function (data, cb) {
     return;
   }
   /* 否则，发起获取token请求 */
-  request({
+  http({
     url: 'https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=' + APPID + '&secret=' + AppSecret,
     method: 'GET'
   }, function (err, response, body) {
@@ -277,7 +274,7 @@ var getJsapiTicketAPI = function (token, cb) {
   }
 
   /* 否则，发起获取ticket请求 */
-  request({
+  http({
     url: 'https://api.weixin.qq.com/cgi-bin/ticket/getticket?access_token=' + token + '&type=jsapi',
     method: 'GET'
   }, function (err, response, body) {
@@ -441,22 +438,6 @@ module.exports = {
     }
 
     if (xmlBody.hasOwnProperty('xml')) {
-      /* 遍历wechatPayOrderList是否存在当前订单 */
-      var existOrder = wechatPayOrderList.some(function (order_item) {
-        return xmlBody.xml.nonce_str[0] === order_item;
-      });
-
-      /* 如果内存中已经存在该订单，直接返回成功 */
-      if (existOrder) {
-        console.log('订单已存在！');
-        _rePayResult = {
-          return_code: 'SUCCESS',
-          return_msg: 'OK'
-        }
-        _rePayResultXml = utils.getUnifiedXmlParams(_rePayResult, true);
-        return res.send(_rePayResultXml);
-        return next();
-      }
 
       var _rePayContent = {};
       /* 格式化接收到的文档，并做签名认证 */
@@ -480,7 +461,6 @@ module.exports = {
 
       if (sign === xmlBody.xml.sign[0]) {
         console.log('处理订单逻辑！');
-        wechatPayOrderList.push(_rePayContent.nonce_str);
         _rePayResult = {
           return_code: 'SUCCESS',
           return_msg: 'OK'

@@ -26,6 +26,8 @@ module.exports = function () {
   });
 
   require('../app/routes/wechat.server.routes')(app);
+  require('../app/routes/alipay.server.routes')(app);
+  require('../app/routes/iapppay.server.routes')(app);
 
   /* 错误路由拦截 */
   require('../app/routes/error.server.routes')(app);
