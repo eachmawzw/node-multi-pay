@@ -5,4 +5,6 @@ var config = require('../config/config');
 
 app.listen(config.port, function () {
   console.log('server running at port:', config.port);
+  console.log('find the API at folder: /app/routes');
+  console.log('find the methods at folder: /app/controllers');
 });

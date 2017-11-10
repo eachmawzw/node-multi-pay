@@ -1,10 +1,11 @@
 {
-  "name": "node-wechatPay",
-  "version": "0.1.0",
-  "description": "node-wechatPay",
+  "name": "node-multi-pay",
+  "version": "0.2.0",
+  "description": "node-multi-pay",
   "main": "bin/www",
   "scripts": {
-    "dev": "node bin/www"
+    "start": "node bin/www",
+    "dev": "nodemon bin/www"
   },
   "author": "king",
   "license": "ISC",
