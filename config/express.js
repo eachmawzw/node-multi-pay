@@ -8,6 +8,7 @@ module.exports = function () {
 
   app.use(bodyParse.json());
   app.use(xmlParser());
+  app.use(express.static('./'));
 
   app.use(function (req, res, next) {
     /* 获取请求源 */
@@ -23,6 +24,11 @@ module.exports = function () {
     } else {
       next(); 
     }
+  });
+
+  app.get('/', function (req, res, next) {
+    res.sendfile('/index.html');
+    next();
   });
 
   require('../app/routes/wechat.server.routes')(app);
